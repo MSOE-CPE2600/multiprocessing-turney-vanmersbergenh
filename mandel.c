@@ -1,10 +1,18 @@
+/**********************************************
+*  Filename: mandel.c
+*  Description: Uses multiprocessing to create mandelbrot images
+*  Compile: make
+*  Modified by: Hunter Van Mersbergen
+*  Date: 11/18/2025
+*  Class: CPE2600 121
+***********************************************/
+
 /// 
 //  mandel.c
 //  Based on example code found here:
 //  https://users.cs.fiu.edu/~cpoellab/teaching/cop4610_fall22/project3.html
 //
 //  Converted to use jpg instead of BMP and other minor changes
-//  
 ///
 #include <stdlib.h>
 #include <stdio.h>

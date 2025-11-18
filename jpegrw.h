@@ -1,3 +1,12 @@
+/**********************************************
+*  Filename: jpegrw.h
+*  Description: Uses multiprocessing to create mandelbrot images
+*  Compile: make
+*  Modified by: Hunter Van Mersbergen
+*  Date: 11/18/2025
+*  Class: CPE2600 121
+***********************************************/
+
 #ifndef JPEGRW_H
 #define JPEGRW_H
 
