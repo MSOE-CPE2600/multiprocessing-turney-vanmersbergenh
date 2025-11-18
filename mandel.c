@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "jpegrw.h"
+#include <sys/wait.h>
 
 // local routines
 static int iteration_to_color( int i, int max );
@@ -23,9 +24,11 @@ int main( int argc, char *argv[] )
 {
 	char c;
 
+	int num_procs = 1;
+
 	// These are the default configuration values used
 	// if no command line arguments are given.
-	const char *outfile = "mandel.jpg";
+//	const char *outfile = "mandel.jpg";
 	double xcenter = 0;
 	double ycenter = 0;
 	double xscale = 4;
@@ -37,7 +40,7 @@ int main( int argc, char *argv[] )
 	// For each command line argument given,
 	// override the appropriate configuration value.
 
-	while((c = getopt(argc,argv,"x:y:s:W:H:m:o:h"))!=-1) {
+	while((c = getopt(argc,argv,"x:y:s:W:H:m:n:h"))!=-1) {
 		switch(c) 
 		{
 			case 'x':
@@ -58,36 +61,75 @@ int main( int argc, char *argv[] )
 			case 'm':
 				max = atoi(optarg);
 				break;
-			case 'o':
-				outfile = optarg;
-				break;
 			case 'h':
 				show_help();
 				exit(1);
+				break;
+			case 'n':
+				num_procs = atoi(optarg);
 				break;
 		}
 	}
 
 	// Calculate y scale based on x scale (settable) and image sizes in X and Y (settable)
-	yscale = xscale / image_width * image_height;
 
 	// Display the configuration of the image.
-	printf("mandel: x=%lf y=%lf xscale=%lf yscale=%1f max=%d outfile=%s\n",xcenter,ycenter,xscale,yscale,max,outfile);
+	printf("mandel: x=%lf y=%lf xscale=%lf yscale=%1f max=%d outfile=%s\n",xcenter,ycenter,xscale,yscale,max, "mandel##.jpeg");
+	
+	int procs = 0;
+	int images = 0;
 
-	// Create a raw image of the appropriate size.
-	imgRawImage* img = initRawImage(image_width,image_height);
+	while (images < 50)
+	{
+		if (procs >= num_procs)
+		{
+			wait(NULL);
+			procs--;
+		}
+		if (procs < num_procs)
+		{
+			int pid = fork();
+			if (pid == 0)
+			{
+				xcenter = 0.01 * images;
+				xscale = images * 0.1 + 0.1;
+				yscale = xscale / image_width * image_height;
 
-	// Fill it with a black
-	setImageCOLOR(img,0);
+				char filename[12] = {"mandel##.jpg"};
+				filename[6] = (images / 10) + '0';
+				filename[7] = (images % 10) + '0';
+				char *outfile = filename;
+				// Create a raw image of the appropriate size.
+				imgRawImage* img = initRawImage(image_width,image_height);
 
-	// Compute the Mandelbrot image
-	compute_image(img,xcenter-xscale/2,xcenter+xscale/2,ycenter-yscale/2,ycenter+yscale/2,max);
+				// Fill it with a black
+				setImageCOLOR(img,0);
 
-	// Save the image in the stated file.
-	storeJpegImageFile(img,outfile);
+				// Compute the Mandelbrot image
+				compute_image(img,xcenter-xscale/2,xcenter+xscale/2,ycenter-yscale/2,ycenter+yscale/2,max);
 
-	// free the mallocs
-	freeRawImage(img);
+				// Save the image in the stated file.
+				storeJpegImageFile(img,outfile);
+
+				// free the mallocs
+				freeRawImage(img);
+				exit(0);
+			}
+			else 
+			{
+				procs++;
+				printf("Procs: %d\n", procs);
+				printf("Images: %d\n", images);
+				images++;
+			}
+		}
+	}
+	while (procs > 0)
+	{
+		wait(NULL);
+		procs--;
+		printf("Procs: %d\n", procs);
+	}
 
 	return 0;
 }
