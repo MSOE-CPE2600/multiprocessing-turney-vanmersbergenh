@@ -1,9 +1,9 @@
 /**********************************************
 *  Filename: mandel.c
-*  Description: Uses multiprocessing to create mandelbrot images
+*  Description: Uses multiprocessing and multithreading to create mandelbrot images
 *  Compile: make
 *  Modified by: Hunter Van Mersbergen
-*  Date: 11/18/2025
+*  Date: 11/24/2025
 *  Class: CPE2600 121
 ***********************************************/
 
@@ -19,13 +19,26 @@
 #include <unistd.h>
 #include "jpegrw.h"
 #include <sys/wait.h>
+#include <pthread.h>
+
+typedef struct thread_data {
+	imgRawImage* img;
+	double xmin;
+	double xmax;
+	double ymin;
+	double ymax;
+	int max;
+	int start_row;
+	int end_row;
+} thread_data_t;
 
 // local routines
 static int iteration_to_color( int i, int max );
 static int iterations_at_point( double x, double y, int max );
 static void compute_image( imgRawImage *img, double xmin, double xmax,
-									double ymin, double ymax, int max );
+									double ymin, double ymax, int max, int threads);
 static void show_help();
+static void* thread_image(void* thread_struct);
 
 
 int main( int argc, char *argv[] )
@@ -33,6 +46,7 @@ int main( int argc, char *argv[] )
 	char c;
 
 	int num_procs = 1;
+	int num_threads = 1;
 
 	// These are the default configuration values used
 	// if no command line arguments are given.
@@ -48,7 +62,7 @@ int main( int argc, char *argv[] )
 	// For each command line argument given,
 	// override the appropriate configuration value.
 
-	while((c = getopt(argc,argv,"x:y:s:W:H:m:n:h"))!=-1) {
+	while((c = getopt(argc,argv,"x:y:s:W:H:m:n:t:h"))!=-1) {
 		switch(c) 
 		{
 			case 'x':
@@ -75,6 +89,9 @@ int main( int argc, char *argv[] )
 				break;
 			case 'n':
 				num_procs = atoi(optarg);
+				break;
+			case 't':
+				num_threads = atoi(optarg);
 				break;
 		}
 	}
@@ -114,7 +131,7 @@ int main( int argc, char *argv[] )
 				setImageCOLOR(img,0);
 
 				// Compute the Mandelbrot image
-				compute_image(img,xcenter-xscale/2,xcenter+xscale/2,ycenter-yscale/2,ycenter+yscale/2,max);
+				compute_image(img,xcenter-xscale/2,xcenter+xscale/2,ycenter-yscale/2,ycenter+yscale/2,max,num_threads);
 
 				// Save the image in the stated file.
 				storeJpegImageFile(img,outfile);
@@ -141,9 +158,6 @@ int main( int argc, char *argv[] )
 
 	return 0;
 }
-
-
-
 
 /*
 Return the number of iterations at point x, y
@@ -176,16 +190,65 @@ Compute an entire Mandelbrot image, writing each point to the given bitmap.
 Scale the image to the range (xmin-xmax,ymin-ymax), limiting iterations to "max"
 */
 
-void compute_image(imgRawImage* img, double xmin, double xmax, double ymin, double ymax, int max )
+void compute_image(imgRawImage* img, double xmin, double xmax, double ymin, double ymax, int max, int threads)
 {
-	int i,j;
+	pthread_t tids[threads];
+	thread_data_t thread_data[threads];
+	
+	int height = img->height;
+
+	int thread_rows = height / threads;
+	// For every pixel in the image...
+
+	//split work among threads
+	for (int t = 0; t < threads; t++) {
+		thread_data[t].img = img;
+		thread_data[t].xmin = xmin;
+		thread_data[t].xmax = xmax;
+		thread_data[t].ymin = ymin;
+		thread_data[t].ymax = ymax;
+		thread_data[t].max = max;
+		thread_data[t].start_row = t * thread_rows;
+		if (t == threads - 1) {
+			thread_data[t].end_row = height;
+		} else {
+			thread_data[t].end_row = (t + 1) * thread_rows;
+		}
+
+		pthread_create(&tids[t], NULL, (void*)thread_image, (void*)&thread_data[t]);
+	}
+
+	for (int t = 0; t < threads; t++) {
+		pthread_join(tids[t], NULL);
+	}
+}
+
+/**
+* Coomputes a portion of the image in a thread
+*
+* @param thread_struct Pointer to thread_data_t struct
+* @return NULL
+*/
+void* thread_image(void* thread_struct) 
+{
+	thread_data_t* data = (thread_data_t*)thread_struct;
+	imgRawImage* img = data->img;
+	double xmin = data->xmin;
+	double xmax = data->xmax;
+	double ymin = data->ymin;
+	double ymax = data->ymax;
+	int max = data->max;
+	int start_row = data->start_row;
+	int end_row = data->end_row;
 
 	int width = img->width;
 	int height = img->height;
 
-	// For every pixel in the image...
+	int i,j;
 
-	for(j=0;j<height;j++) {
+	// same code from compute_image but for only the
+	// part of the image the thread is computing
+	for(j=start_row;j<end_row;j++) {
 
 		for(i=0;i<width;i++) {
 
@@ -200,6 +263,8 @@ void compute_image(imgRawImage* img, double xmin, double xmax, double ymin, doub
 			setPixelCOLOR(img,i,j,iteration_to_color(iters,max));
 		}
 	}
+
+	return NULL;
 }
 
 
